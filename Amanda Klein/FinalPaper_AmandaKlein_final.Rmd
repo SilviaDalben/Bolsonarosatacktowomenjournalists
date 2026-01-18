@@ -1,0 +1,182 @@
+---
+title: "FinalPaper - Women Journalists on the target of Bolsonaro - Analysis Amanda Klein"
+author: "Silvia DalBen Furtado"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup}
+library(tidyverse)
+library(dplyr)
+library(academictwitteR)
+library(tidytext)
+library(tokenizers)
+library(wordcloud)
+library(textdata)
+library(quanteda)
+library(stopwords)
+library(quanteda.textplots)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+library(plyr)
+library(widyr)
+```
+
+## Read RDS
+
+```{r}
+getwd()
+amandaklein_tweets <- read_rds("amandaklein_tweets.rds")
+```
+
+## Basic analysis
+
+```{r}
+names(amandaklein_tweets) #analizing the variables I have in my dataframe
+nrow(amandaklein_tweets) #analyzing how many observations I have in my dataframe
+str(amandaklein_tweets$text) #analizing if text column is a character type or not
+str(amandaklein_tweets$created_at) #analizing date column type
+```
+
+## Filtering and plotting the number of messages over time
+
+```{r}
+amandaklein_tweetcount <- as.data.frame(table(amandaklein_tweets$created_at)) %>%
+  mutate(date = as.Date(Var1))
+
+plot <- amandaklein_tweetcount %>% ggplot(aes(x=date, y=Freq)) +
+  geom_bar(stat = "identity", fill = "#1DA1F2") +
+  labs(title = "Number of tweets that mention Amanda Klein | August-October 2022", x = "\ndate", y = "tweets", caption = "Source: 12-08-2022 Twitter API") +
+  scale_x_date(date_breaks = "10 days", date_labels =  "%b %d") +
+    theme_minimal()
+plot
+```
+
+In this chart, we can observe that the day with the biggest amount of tweets referring to Amanda Klein is the same as the day she was interviewing Bolsonaro and were attacked by him: September 6th.
+
+We also see a peak on September 30th that is related to an arguing Amanda Klein had with another journalist (male) during a program in the radio station where she works (Jovem Pan). She was analyzing how the strength of journalists' opinions on social media increased the climate of polarization and political radicalization, and she argues with Marco Antônio Costa about the narratives created by the media to report the celebration of September 7, which is Brazilian Independence Day. Those celebrations were used by Bolsonaro's election campaign, even though this was an official event led by the current president that could not be used as a campaign act considering the election law.
+
+We also see a peak on October 18th, which is related to a firm opinion Amanda gave on the radio about the latest controversial statement said by Bolsonaro regarding his view of the country's poor population. She confront the idea of "ignorant vote" argued by Bolsonaro and his “arrogant and boastful concept that the poor cannot vote”.
+
+
+# NLP analysis
+
+## Selecting the variables
+
+```{r}
+#selecting the variables I want to keep for the analysis
+amandaklein_tweets_clean <- amandaklein_tweets %>% 
+  select(id, created_at, text)
+```
+
+## Lowercasing my data
+
+```{r}
+amandaklein_tweets_clean$text <- tolower(amandaklein_tweets_clean$text)
+str(amandaklein_tweets_clean$text)
+```
+
+## TOKENIZING my data and cleaning STOPWORDS
+
+```{r}
+amandaklein_tokens_clean <- tokens(amandaklein_tweets_clean$text, 
+                 remove_punct = TRUE,
+                 remove_symbols = TRUE,
+                 remove_numbers = TRUE,
+                 remove_url = TRUE,
+                 remove_separators = TRUE) %>%
+  tokens_remove(stopwords("pt"))
+
+words_to_remove <- c("é", "amanda", "klein", "jovem", "pan", "manhã", "logo", "passando", "quere", "pra", "rt", "d", "vc", "q", "r", "ver", "ser", "vai", "pode", "ainda", "fez", "ri", "gente", "após", "sobre", "tudo", "f", "pq", "□□□□", "bolsonaro", "k", "p", "g")
+custom_stopwords <- rbind(stopwords("pt"), words_to_remove)
+
+amandaklein_tokens_clean <- tokens_remove(amandaklein_tokens_clean, custom_stopwords)
+```
+
+## Word cloud
+
+```{r}
+#bag of words
+amandaklein_dfm <- dfm(amandaklein_tokens_clean)
+topfeatures(amandaklein_dfm, n = 100)
+set.seed(100)
+textplot_wordcloud(amandaklein_dfm, min_count = 2500, random_order = FALSE,
+                   rotation = .25)
+```
+
+In this wordcloud, we can observe the name of Bolsonaro as the word most cited on tweets about Amanda Klein during the election campaign in Brazil. It is also interesting to observe the names of other journalists such as Vera Magalhães, Miriam Leitão and Ricardo Noblat. Vera and Miriam were also targeted by Bolsonaro’s attacks on women journalists in social media.
+
+We also observe in this word cloud the negative words such as shame (vergonha), and upset stomach (embrulham estômago), and words like money (dinheiro) and price (preço), which is related to the question Amanda did in Bolsonaro's interview.
+
+Twitter profiles to look at that were cited in this wordcloud are @kennedyalencar, @rconstantino, @_dudasc, @matheusagostin, @tali_mito22, @viniciuscfp82.
+
+
+# Semantic Network Analysis
+
+## Cleaning and filtering
+
+Here I am filtering the dataset to do a Semantic Network Analysis just in the following days after Bolsonaro's attack.
+
+```{r}
+amandaklein_tweets_clean2 <- filter(amandaklein_tweets_clean, created_at > "2022-09-06T00:00:00.000Z")
+nrow(amandaklein_tweets_clean2)
+
+amandaklein_tweets_clean3 <- filter(amandaklein_tweets_clean2, created_at <= "2022-09-09T23:59:00.000Z")
+nrow(amandaklein_tweets_clean3)
+```
+
+## Bigram Network
+
+```{r}
+final_stop <- data.frame(word = c("é", "gabriela", "prioli", "rt", "d", "vc", "q", "r", "ver", "ser", "vai", "pode", "ainda", "fez", "ri", "gente", "após", "sobre", "tudo", "f", "pq", "que", "a", "o", "por", "de", "do", "da", "os", "eh", "https", "t.co", "em", "s", "viu", "as", "ve", "como", "tanto", "tipo", "assim", "tem", "foi", "e", "ser", "nas", "seu", "quer", "saber", "não", "marquesadvg", "se", "ele", "ela", "ao", "com", "suas", "revistaforum", "contou", "através", "essa", "dizendo", "todo", "só", "foram", "faz", "na", "parte", "sabe", "la", "blablabli", "passou", "para", "g", "uma", "às", "na", "hum", "uma", "no", "à", "p", "amanda", "klein", "sua", "está", "tendo", "seus", "porque", "pra", "jovem", "pan"),
+                         lexicon = "custom") %>%
+  rbind(stopwords("pt")) #adds custom words to stop list
+
+amandaklein_bigram <- amandaklein_tweets_clean3 %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% final_stop$word) %>% #uses the combined preset and custom list
+  filter(!word2 %in% final_stop$word)
+
+amandaklein_bigram_ct <- amandaklein_bigram %>% dplyr::count(word1, word2, sort = TRUE)
+head(amandaklein_bigram_ct, 50)
+```
+
+## Plotting
+
+```{r}
+amandaklein_bigram_graph <- amandaklein_bigram_ct %>%
+  filter(n > 1000) %>% #removes bigrams that appear fewer than X times
+  graph_from_data_frame()
+
+amandaklein_bigram_graph
+```
+
+
+```{r}
+ggraph(amandaklein_bigram_graph, layout = "fr") + #use the fr layout algorithm
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name),
+                 repel = TRUE) + #use repel so the words do not overlap
+  theme_void() #void theme
+```
+
+```{r}
+a <- grid::arrow(type = "closed", length = unit(.2, "cm"))
+#the above row determines the lay the arrows will look
+#check out ?arrow for more information
+
+ggraph(amandaklein_bigram_graph, layout = "fr") + #use the fr layout
+  geom_edge_link(aes(edge_alpha = n), #vary the edge color by n
+                 #darker lines are bigrams that occur more often
+                 arrow = a, #add the arrow information
+                 )+
+  geom_node_point(size = 2) + #makes the geom slightly larger
+  geom_node_text(aes(label = name), #adds text labels for the nodes
+                 repel = TRUE) + 
+  theme_void() #void theme
+```
+
+In this Semantic Network Analysis, we see bigrams such as 51 houses bought (51 casas compradas) money in cash (dinheiro vivo), Bolsonaro attack (Bolsonaro agride), Bolsonaro's family (família Bolsonaro). We also see names of other women journalists also attacked by Bolsonaro, such as Vera Magalhães, Miriam Leitão and Renata Vasconcelos, and a bigram supporting Bolsonaro such as esquerda criminosa (criminal left).
